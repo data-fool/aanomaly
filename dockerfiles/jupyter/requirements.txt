@@ -1,0 +1,9 @@
+psycopg2-binary
+mlflow==1.4.0
+boto3==1.16.4
+botocore==1.19.4
+minio==6.0.0
+pystan==2.19.1.1
+holidays==0.9.12
+fbprophet==0.5
+altair==4.1.0
