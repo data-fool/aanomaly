@@ -1,0 +1,47 @@
+version: "3.7"
+services:
+    minio-image:
+        container_name: "minio-container"
+        build:
+            context: dockerfiles/minio
+        restart: always
+        working_dir: "/minio-image/storage"
+        volumes:
+            - ${wd}/minio/storage:/minio-image/storage
+        ports:
+            - "9000:9000"
+        environment:
+            MINIO_ACCESS_KEY: minio-image
+            MINIO_SECRET_KEY: minio-image-pass1984
+        command: server /minio-image/storage
+
+    mlflow-image:
+        container_name: "mlflow-container"
+        build:
+            context: dockerfiles/mlflow
+        working_dir: "/mlflow-image"
+        volumes:
+            - ${wd}/mlflow:/mlflow-image
+        environment:
+            MLFLOW_S3_ENDPOINT_URL: http://minio-image:9000
+            AWS_ACCESS_KEY_ID: minio-image
+            AWS_SECRET_ACCESS_KEY: minio-image-pass1984
+        ports:
+            - "5000:5000"
+        command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow-image/mlruns
+
+    jupyter-image:
+        container_name: "jupyter-container"
+        build:
+            context: dockerfiles/jupyter
+        volumes:
+            - ${wd}/notebooks:/home/jovyan/work
+            - ${wd}/aanomaly:/home/jovyan/work/aanomaly
+            - ${wd}/mlflow:/mlflow-image
+        environment:
+            MLFLOW_S3_ENDPOINT_URL: http://minio-image:9000
+            AWS_ACCESS_KEY_ID: minio-image
+            AWS_SECRET_ACCESS_KEY: minio-image-pass    
+            MLFLOW_TRACKING_URI: http://mlflow-image:5000        
+        ports:    
+            - "8888:8888"
