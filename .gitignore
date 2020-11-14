@@ -1,0 +1,10 @@
+.idea
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# MLFlow
+storage/mlflow
+
+#Minio
+storage/minio/storage/.minio.sys
