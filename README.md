@@ -7,7 +7,7 @@ Table of Contents:
 
 ## Quickstart
 1. Make sure you have [Docker](https://www.docker.com/products/docker-desktop) installed on your machine.
-2. Update the 'wd' workind directory variable in your .env file
+2. Update the 'wd' working directory variable in your .env file
 3. Run docker compose:  
  ```docker-compose up -d --build``` 
 
