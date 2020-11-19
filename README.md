@@ -15,3 +15,4 @@ Table of Contents:
 - Jupyter Notebook: http://localhost:8888
 - MLflow: http://localhost:5000
 - Minio: http://localhost:9000
+- PgAdmin: http://localhost:1234

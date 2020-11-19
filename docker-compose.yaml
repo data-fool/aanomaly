@@ -45,3 +45,34 @@ services:
             MLFLOW_TRACKING_URI: http://mlflow-image:5000        
         ports:    
             - "8888:8888"
+
+    postgres-druid-image:
+        image: postgres:12.4
+        restart: always
+        container_name: "postgres-druid-container"
+        ports:
+            - 5431:5431
+        environment:
+            - POSTGRES_DB=druid
+            - POSTGRES_USER=druid
+            - POSTGRES_PASSWORD=druid
+        volumes:
+            - pg_data_druid:/var/lib/postgresql/data
+
+    pgadmin-image:
+        image: dpage/pgadmin4:4.16
+        container_name: "pgadmin-container"
+        environment:
+            PGADMIN_DEFAULT_EMAIL: "guest"
+            PGADMIN_DEFAULT_PASSWORD: "guest"
+        volumes:
+            - ${wd}/pgadmin/:/var/lib/pgadmin
+        ports:
+            - 1234:80
+        depends_on:
+            - postgres-druid-image
+
+volumes:
+    pg_data_druid:
+        external: false
+        name: pg_data_druid
