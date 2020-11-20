@@ -12,7 +12,8 @@ Table of Contents:
  ```docker-compose up -d --build``` 
 
 ### Access the following system components from the following addresses
-- Jupyter Notebook: http://localhost:8888
+- Jupyter Notebook: http://localhost:8889
 - MLflow: http://localhost:5000
 - Minio: http://localhost:9000
 - PgAdmin: http://localhost:1234
+- Druid Management UI: http://localhost:8888
