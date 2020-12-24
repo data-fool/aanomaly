@@ -11,7 +11,7 @@ Table of Contents:
 3. Run docker compose:  
  ```docker-compose up -d --build``` 
 
-### Access the following system components from the following addresses
+### Access the following components from the following addresses
 - Jupyter: http://localhost:8889
 - MLflow: http://localhost:5000
 - Minio: http://localhost:9000
