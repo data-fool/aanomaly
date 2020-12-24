@@ -1,0 +1,28 @@
+# General
+# druid.service=${DRUID_SERVICE}
+# druid.host=${DRUID_HOST}
+# druid.plaintextPort=${DRUID_SERVICE_PORT}
+# druid.port=${DRUID_SERVICE_PORT}
+druid.service=historical
+druid.plaintextPort=8083
+
+# HTTP server threads
+druid.server.http.numThreads=5
+
+# Processing threads and buffers
+druid.processing.buffer.sizeBytes=50MiB
+druid.processing.numThreads=2
+
+# Logging
+# druid.monitoring.monitors=["io.druid.client.cache.CacheMonitor", "com.metamx.metrics.JvmMonitor", "io.druid.server.metrics.HistoricalMetricsMonitor"]
+druid.monitoring.monitors=["com.metamx.metrics.JvmMonitor"]
+
+# Segment storage
+druid.segmentCache.locations=[{"path":"var/druid/segment-cache","maxSize":"200MiB"}]
+druid.server.maxSize=200MiB
+
+# Query cache
+druid.historical.cache.useCache=true
+druid.historical.cache.populateCache=true
+druid.cache.type=caffeine
+druid.cache.sizeInBytes=200MiB

@@ -1,7 +1,10 @@
 version: "3.7"
 services:
-    minio-image:
-        container_name: "minio-container"
+    minio:
+        image: minio/minio:latest
+        container_name: "minio"
+        networks:
+            - druid-net
         deploy:
             resources:
                 limits:
@@ -10,54 +13,76 @@ services:
                 reservations:
                     cpus: '0.5'
                     memory: 256M
-        build:
-            context: dockerfiles/minio
         restart: always
-        working_dir: "/minio-image/storage"
+        working_dir: "/minio/storage"
         volumes:
-            - ${wd}/minio/storage:/minio-image/storage
+            - ${wd}/minio/storage:/minio/storage
         ports:
             - "9000:9000"
         environment:
-            MINIO_ACCESS_KEY: minio-image
-            MINIO_SECRET_KEY: minio-image-pass1984
-        command: server /minio-image/storage
+            MINIO_ACCESS_KEY: ${S3_ACCESS_KEY}
+            MINIO_SECRET_KEY: ${S3_SECRET_KEY}
+        command: server /minio/storage
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+            interval: 30s
+            timeout: 20s
+            retries: 3
 
-    mlflow-image:
-        container_name: "mlflow-container"
+    minio-client:
+        image: minio/mc:latest
+        container_name: "minio-client"
+        networks:
+            - druid-net
+        depends_on:
+            minio:
+                condition: service_healthy
+        env_file:
+            - dockerfiles/druid/druid_environment
+        entrypoint: >
+            sh -c "mc config host add minio http://minio:9000 ${S3_ACCESS_KEY} ${S3_SECRET_KEY} && mc mb minio/$$S3_STORAGE_BUKCET"
+
+    mlflow:
+        container_name: "mlflow"
+        networks:
+            - druid-net
         build:
             context: dockerfiles/mlflow
-        working_dir: "/mlflow-image"
+        working_dir: "/mlflow"
         volumes:
-            - ${wd}/mlflow:/mlflow-image
+            - ${wd}/mlflow:/mlflow
         environment:
-            MLFLOW_S3_ENDPOINT_URL: http://minio-image:9000
-            AWS_ACCESS_KEY_ID: minio-image
-            AWS_SECRET_ACCESS_KEY: minio-image-pass1984
+            MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+            AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+            AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
         ports:
             - "5000:5000"
-        command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow-image/mlruns
+        command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow/mlruns
 
-    jupyter-image:
-        container_name: "jupyter-container"
+    jupyter:
+        container_name: "jupyter"
+        networks:
+            - druid-net
         build:
             context: dockerfiles/jupyter
         volumes:
             - ${wd}/notebooks:/home/jovyan/work
             - ${wd}/aanomaly:/home/jovyan/work/aanomaly
-            - ${wd}/mlflow:/mlflow-image
+            - ${wd}/mlflow:/mlflow
         environment:
-            MLFLOW_S3_ENDPOINT_URL: http://minio-image:9000
-            AWS_ACCESS_KEY_ID: minio-image
-            AWS_SECRET_ACCESS_KEY: minio-image-pass    
-            MLFLOW_TRACKING_URI: http://mlflow-image:5000        
+            MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+            AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+            AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}    
+            MLFLOW_TRACKING_URI: http://mlflow:5000        
         ports:    
             - "8889:8888"
 
-    postgres-druid-image:
+    postgres-druid:
         image: postgres:12.4
+        networks:
+            - druid-net
         restart: always
-        container_name: "postgres-druid-container"
+        container_name: "postgres-druid"
         deploy:
             resources:
                 limits:
@@ -70,14 +95,16 @@ services:
             - "5431:5431"
         environment:
             - POSTGRES_DB=druid
-            - POSTGRES_USER=druid
-            - POSTGRES_PASSWORD=druid
+            - POSTGRES_USER=${POSTGRES_USER_NAME}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
         volumes:
             - pg_data_druid:/var/lib/postgresql/data
 
-    pgadmin-image:
+    pgadmin:
         image: dpage/pgadmin4:4.16
-        container_name: "pgadmin-container"
+        networks:
+            - druid-net
+        container_name: "pgadmin"
         environment:
             PGADMIN_DEFAULT_EMAIL: "guest"
             PGADMIN_DEFAULT_PASSWORD: "guest"
@@ -86,154 +113,170 @@ services:
         ports:
             - "1234:80"
         depends_on:
-            - postgres-druid-image
+            - postgres-druid
 
-    zookeeper-image:
-        container_name: "zookeeper-container"
-        image: zookeeper:3.5
-        deploy:
-            resources:
-                limits:
-                    cpus: '1'
-                    memory: 512M
-                reservations:
-                    cpus: '1'
-                    memory: 512M
+    zookeeper:
+        image: zookeeper:latest
+        container_name: "druid-zookeeper"
+        networks:
+            - druid-net
         ports:
-            - "2181:2181"
-            - "2888:2888"
-            - "3888:3888" 
+            - 2181:2181
         environment:
             - ZOO_MY_ID=1
 
-    coordinator-image:
-        image: apache/druid:0.20.0
-        container_name: "coordinator-container"
-        deploy:
-            resources:
-                limits:
-                    cpus: '1'
-                    memory: 512M
-                reservations:
-                    cpus: '1'
-                    memory: 512M
-        volumes:
-            - ./storage:/opt/data
-            - coordinator_var:/opt/druid/var
-        depends_on:
-            - zookeeper-image
-            - postgres-druid-image
+    coordinator:
+        build: dockerfiles/druid
+        image: druid-coordinator:latest
+        container_name: "druid-coordinator"
+        hostname: coordinator
+        networks:
+            - druid-net
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
         ports:
             - "8081:8081"
-        command:
-            - coordinator
         env_file:
-            - druid_environment
+            - dockerfiles/druid/druid_environment
+        environment:
+            - DRUID_SERVICE=coordinator
+            - DRUID_JVM_ARGS=-server -Xms256m -Xmx256m -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+            - METADATA_STORAGE_USER=${POSTGRES_USER_NAME}
+            - METADATA_STORAGE_PASSWORD=${POSTGRES_PASSWORD}
 
-    broker-image:
-        image: apache/druid:0.20.0
-        container_name: "broker-container"
-        deploy:
-            resources:
-                limits:
-                    cpus: '2'
-                    memory: 2G
-                reservations:
-                    cpus: '2'
-                    memory: 1G
-        volumes:
-            - broker_var:/opt/druid/var
-        depends_on:
-            - zookeeper-image
-            - postgres-druid-image
-            - coordinator-image
+    broker:
+        build: dockerfiles/druid
+        image: druid-broker:latest
+        container_name: "druid-broker"
+        hostname: broker
+        networks:
+            - druid-net
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
+            - coordinator
         ports:
             - "8082:8082"
-        command:
-            - broker
+        mem_limit: "2.2g"
+        mem_reservation: 500m
         env_file:
-            - druid_environment
+            - dockerfiles/druid/druid_environment
+        environment:
+            - DRUID_SERVICE=broker
+            - DRUID_JVM_ARGS=-server -Xms2g -Xmx2g -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager -XX:MaxDirectMemorySize=1g -XX:+UseG1GC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -Dcom.sun.management.jmxremote.port=17071 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+            - METADATA_STORAGE_USER=${POSTGRES_USER_NAME}
+            - METADATA_STORAGE_PASSWORD=${POSTGRES_PASSWORD}
 
-    historical-image:
-        image: apache/druid:0.20.0
-        container_name: "historical-container"
-        deploy:
-            resources:
-                limits:
-                    cpus: '2'
-                    memory: 2G
-                reservations:
-                    cpus: '2'
-                    memory: 1G
-        volumes:
-            - ./storage:/opt/data
-            - historical_var:/opt/druid/var
-        depends_on:
-            - zookeeper-image
-            - postgres-druid-image
-            - coordinator-image
+    historical:
+        build: dockerfiles/druid
+        image: druid-historical:latest
+        container_name: "druid-historical"
+        hostname: historical
+        networks:
+            - druid-net
         ports:
             - "8083:8083"
-        command:
-            - historical
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
+            - coordinator
+        mem_limit: "2.2g"
+        mem_reservation: 200m
         env_file:
-            - druid_environment
+            - dockerfiles/druid/druid_environment
+        environment:
+            - DRUID_SERVICE=historical
+            - DRUID_JVM_ARGS=-server -Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager -XX:+UseConcMarkSweepGC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+            - METADATA_STORAGE_USER=${POSTGRES_USER_NAME}
+            - METADATA_STORAGE_PASSWORD=${POSTGRES_PASSWORD}
 
-    middlemanager-image:
-        image: apache/druid:0.20.0
-        container_name: "middlemanager-container"
-        deploy:
-            resources:
-                limits:
-                    cpus: '2'
-                    memory: 1G
-                reservations:
-                    cpus: '2'
-                    memory: 256M
-        volumes:
-            - ./storage:/opt/data
-            - middle_var:/opt/druid/var
-        depends_on:
-            - zookeeper-image
-            - postgres-druid-image
-            - coordinator-image
+    overlord:
+        build: dockerfiles/druid
+        image: druid-overlord:latest
+        container_name: "druid-overlord"
+        hostname: overlord
+        networks:
+            - druid-net
+        ports:
+            - "8090:8090"
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
+            - coordinator
+        env_file:
+            - dockerfiles/druid/druid_environment
+        environment:
+            - DRUID_SERVICE=overlord
+            - DRUID_JVM_ARGS=-server -Xms256m -Xmx256m -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+            - METADATA_STORAGE_USER=${POSTGRES_USER_NAME}
+            - METADATA_STORAGE_PASSWORD=${POSTGRES_PASSWORD}
+
+    middlemanager:
+        build: dockerfiles/druid
+        image: druid-middlemanager:latest
+        container_name: "druid-middlemanager"
+        hostname: middlemanager
+        networks:
+            - druid-net
         ports:
             - "8091:8091"
-        command:
-            - middleManager
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
+            - coordinator
         env_file:
-            - druid_environment
+            - dockerfiles/druid/druid_environment
+        environment:
+            - DRUID_SERVICE=middleManager
+            - DRUID_JVM_ARGS=-server -Xms64m -Xmx64m -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+            - METADATA_STORAGE_USER=${POSTGRES_USER_NAME}
+            - METADATA_STORAGE_PASSWORD=${POSTGRES_PASSWORD}
 
-    router-image:
-        image: apache/druid:0.20.0
-        container_name: "router-container"
-        deploy:
-            resources:
-                limits:
-                    cpus: '1'
-                    memory: 256M
-                reservations:
-                    cpus: '1'
-                    memory: 256M
-        volumes:
-            - router_var:/opt/druid/var
-        depends_on:
-            - zookeeper-image
-            - postgres-druid-image
-            - coordinator-image
+
+    router:
+        build: dockerfiles/druid
+        image: druid-router:latest
+        container_name: "druid-router"
+        hostname: router
+        networks:
+            - druid-net
         ports:
-            - "8888:8888"
-        command:
-            - router
+            - "8080:8080"
+        depends_on: 
+            - postgres-druid
+            - zookeeper
+            - minio
+            - coordinator
+            - broker  
         env_file:
-            - druid_environment
+            - dockerfiles/druid/druid_environment  
+        environment:
+            - DRUID_SERVICE=router
+            - DRUID_JVM_ARGS=-server -Xms2g -Xmx2g -Duser.timezone=UTC -Dfile.encoding=UTF-8 -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+            - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+            - S3_SECRET_KEY=${S3_SECRET_KEY}
+
+networks:
+  druid-net:
+    driver: bridge
 
 volumes:
     pg_data_druid:
         external: false
         name: pg_data_druid
-    middle_var: {}
-    historical_var: {}
-    broker_var: {}
-    coordinator_var: {}
-    router_var: {}
