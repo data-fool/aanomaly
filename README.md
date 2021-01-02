@@ -1,5 +1,6 @@
 ### 
 ## aanomaly.io
+###Microservices based anomaly detection framework
 
 Table of Contents:
 
@@ -11,9 +12,10 @@ Table of Contents:
 3. Run docker compose:  
  ```docker-compose up -d --build``` 
 
-### Access the following components from the following addresses
+### Access the following framework components from the following addresses
 - Jupyter: http://localhost:8889
 - MLflow: http://localhost:5000
 - Minio: http://localhost:9000
 - PgAdmin: http://localhost:1234
 - Druid: http://localhost:8080
+- Dash: http://localhost:80

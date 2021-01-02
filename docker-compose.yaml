@@ -77,6 +77,43 @@ services:
         ports:    
             - "8889:8888"
 
+    postgres-dash:
+        image: postgres:12.4
+        networks:
+            - druid-net
+        restart: always
+        container_name: "postgres-dash"
+        deploy:
+            resources:
+                limits:
+                    cpus: '1'
+                    memory: 1G
+                reservations:
+                    cpus: '1'
+                    memory: 512M
+        ports:
+            - "5432:5432"
+        environment:
+            - POSTGRES_DB=dash
+            - POSTGRES_USER=${POSTGRES_DASH_USER_NAME}
+            - POSTGRES_PASSWORD=${POSTGRES_DASH_PASSWORD}
+        volumes:
+            - pg_data_dash:/var/lib/postgresql/data
+
+    dash:
+        container_name: "app-dash"
+        networks:
+            - druid-net
+        build:
+            context: src
+        command: python app.py
+        volumes:
+            - ./src:/code
+        ports:
+            - "80:8000"
+        depends_on:
+            - postgres-dash
+
     postgres-druid:
         image: postgres:12.4
         networks:
@@ -280,3 +317,6 @@ volumes:
     pg_data_druid:
         external: false
         name: pg_data_druid
+    pg_data_dash:
+        external: false
+        name: pg_data_dash
