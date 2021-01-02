@@ -1,6 +1,6 @@
 ### 
 ## aanomaly.io
-###Microservices based anomaly detection framework
+### Microservices based anomaly detection framework
 
 Table of Contents:
 
